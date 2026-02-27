@@ -7,8 +7,11 @@ Typed TypeScript SDK for the [DigiDollar](https://github.com/DigiByte-Core/digib
 | Package | Description | Status |
 |---------|-------------|--------|
 | [`@digidollar/rpc-client`](packages/rpc-client) | Typed RPC wrapper for all 31 DigiDollar methods | Phase 1 ✅ |
+| [`@digidollar/tx-parser`](packages/tx-parser) | Pure transaction parser and UTXO classifier | Phase 2 ✅ |
 
 ## Quick Start
+
+### RPC Client — talk to a DigiByte node
 
 ```bash
 npm install @digidollar/rpc-client
@@ -47,8 +50,50 @@ console.log(`Balance: ${balance.total} cents`);
 const redeem = await dd.redeem({ positionId: mint.txid, ddAmountCents: 10000 });
 ```
 
+### TX Parser — classify transactions without a node
+
+```bash
+npm install @digidollar/tx-parser
+```
+
+```typescript
+import {
+  classifyTransaction,
+  filterSafeOutputs,
+  isDigiDollarTx,
+  parseOpReturn,
+} from '@digidollar/tx-parser';
+
+// Feed it any decoded transaction (from RPC, block explorer API, etc.)
+const rawTx = await fetchTransaction('abc123...');
+
+// Detect DD transactions by version marker
+if (isDigiDollarTx(rawTx.version)) {
+  console.log('This is a DigiDollar transaction');
+}
+
+// Classify every output
+const classified = classifyTransaction(rawTx);
+
+console.log(`Type: ${classified.txType}`);           // 'mint' | 'transfer' | 'redeem'
+console.log(`Tokens: ${classified.tokens.length}`);   // zero-value P2TR (DD ownership)
+console.log(`Collateral: ${classified.collateral.length}`); // locked DGB
+console.log(`Safe to spend: ${classified.standard.length}`); // regular DGB change
+
+// SAFETY: filter outputs for wallet coin selection
+const safeOutputs = filterSafeOutputs(classified.outputs);
+// safeOutputs contains ONLY standard DGB — no DD tokens, collateral, or metadata
+
+// Parse OP_RETURN metadata directly
+const opReturn = parseOpReturn(rawTx.vout[2].scriptPubKey.hex);
+if (opReturn?.txType === 'mint') {
+  console.log(`Minted ${opReturn.ddAmountCents} cents, locked until block ${opReturn.lockHeight}`);
+}
+```
+
 ## Features
 
+### rpc-client
 - **31 typed RPC methods** — oracle, balance, transaction, position, wallet, system
 - **Zero runtime dependencies** — native `fetch` (Node 20+)
 - **Dual ESM/CJS** — works with both module systems
@@ -56,6 +101,68 @@ const redeem = await dd.redeem({ positionId: mint.txid, ddAmountCents: 10000 });
 - **Cookie auth support** — works with DigiByte Core's `.cookie` file
 - **Batch requests** — send multiple RPC calls in a single HTTP request
 - **Raw escape hatch** — `dd.call('anyMethod', [params])` for unlisted methods
+
+### tx-parser
+- **Pure parsing** — no RPC connection, no network access, no dependencies
+- **UTXO classification** — `standard`, `dd_token`, `dd_collateral`, `dd_metadata`
+- **Safety layer** — `filterSafeOutputs()` prevents wallets from spending DD outputs
+- **Protocol-accurate** — CScriptNum and GetScriptOp ported directly from DigiByte C++
+- **Type-aware OP_RETURN parsing** — correctly handles mint, transfer, and redeem formats
+- **Dual ESM/CJS** — same build pattern as rpc-client
+- **125 unit tests** — covering all modules including round-trip CScriptNum verification
+
+## tx-parser API
+
+### Detection
+
+```typescript
+isDigiDollarTx(version: number | { version: number }): boolean
+getDDTxType(version: number): 'mint' | 'transfer' | 'redeem' | null
+```
+
+### Parsing
+
+```typescript
+parseOpReturn(scriptHex: string | Uint8Array): DDOpReturnData | null
+classifyTransaction(tx: DecodedTx): ClassifiedTransaction
+```
+
+### Safety Guards
+
+```typescript
+isDDToken(output): boolean        // zero-value P2TR (DD ownership)
+isDDCollateral(output): boolean   // locked DGB backing DigiDollars
+isDDMetadata(output): boolean     // OP_RETURN protocol data
+isStandard(output): boolean       // regular DGB, safe to spend
+isDDOutput(output): boolean       // any DD protocol output
+filterSafeOutputs(outputs): ClassifiedOutput[]  // KEY FUNCTION for wallets
+```
+
+### Script Utilities
+
+```typescript
+decodeScriptNum(bytes: Uint8Array): bigint   // CScriptNum → bigint
+encodeScriptNum(value: bigint): Uint8Array   // bigint → CScriptNum
+iterScript(script: Uint8Array): Generator<ScriptOp>  // opcode iterator
+```
+
+### Hex Utilities
+
+```typescript
+hexToBytes(hex: string): Uint8Array
+bytesToHex(bytes: Uint8Array): string
+dgbToSats(dgb: number): bigint    // 1.5 DGB → 150000000n
+```
+
+### Output Classification
+
+| Condition | Classification | Safe to Spend? |
+|-----------|---------------|----------------|
+| Any output in non-DD tx | `standard` | Yes |
+| Non-P2TR with value > 0 in DD tx | `standard` | Yes |
+| OP_RETURN in DD tx | `dd_metadata` | No |
+| P2TR + value = 0 in DD tx | `dd_token` | No |
+| P2TR + value > 0 in DD tx | `dd_collateral` | No |
 
 ## RPC Methods
 
@@ -192,15 +299,14 @@ LOCK_TIERS[4] // { days: 365, blocks: 2_102_400, ratio: 300 }
 
 ## Requirements
 
-- Node.js 20+ (native `fetch`)
-- DigiByte Core with DigiDollar enabled (RC22+)
+- Node.js 20+ (native `fetch` for rpc-client)
+- DigiByte Core with DigiDollar enabled (RC22+) for rpc-client
+- tx-parser has no runtime requirements — pure data parsing
 
 ## Roadmap
 
-This is Phase 1 of 4:
-
-1. **RPC Client** (this package) — typed RPC wrapper ✅
-2. **TX Parser** — detect DD transactions, classify UTXOs
+1. **RPC Client** — typed RPC wrapper ✅
+2. **TX Parser** — detect DD transactions, classify UTXOs ✅
 3. **TX Builder** — construct DD transactions without Core RPC
 4. **Full SDK** — oracle consensus, UTXO tracking, position lifecycle
 
