@@ -1,0 +1,35 @@
+{
+  "name": "@digidollar/demo-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"tsx watch src/server.ts\" \"vite --config vite.config.ts\"",
+    "build": "tsc -p tsconfig.json && vite build --config vite.config.ts",
+    "start": "node dist/server/server.js",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@digidollar/core": "*",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/typography": "^0.5.0",
+    "@types/express": "^5.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "autoprefixer": "^10.4.0",
+    "concurrently": "^9.0.0",
+    "postcss": "^8.4.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "react-router-dom": "^6.26.0",
+    "tailwindcss": "^3.4.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0"
+  }
+}
