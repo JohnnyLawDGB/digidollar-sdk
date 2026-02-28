@@ -6,11 +6,58 @@ Typed TypeScript SDK for the [DigiDollar](https://github.com/DigiByte-Core/digib
 
 | Package | Description | Status |
 |---------|-------------|--------|
-| [`@digidollar/rpc-client`](packages/rpc-client) | Typed RPC wrapper for all 31 DigiDollar methods | Phase 1 |
+| [`@digidollar/rpc-client`](packages/rpc-client) | Typed RPC wrapper for all 35 DigiDollar + blockchain methods | Phase 1 |
 | [`@digidollar/tx-parser`](packages/tx-parser) | Pure transaction parser and UTXO classifier | Phase 2 |
 | [`@digidollar/tx-builder`](packages/tx-builder) | Build unsigned DD transactions without a node | Phase 3 |
+| [`@digidollar/core`](packages/core) | High-level SDK — mint, transfer, redeem with automatic signing | Phase 4 |
 
 ## Quick Start
+
+### Core SDK — the easiest way to use DigiDollar
+
+```bash
+npm install @digidollar/core
+```
+
+```typescript
+import { DigiDollar, BIP86Signer } from '@digidollar/core';
+
+// Create a signer from a mnemonic (or generate a new one)
+const signer = BIP86Signer.fromMnemonic('abandon abandon abandon ...', 'testnet');
+// Or: const { signer, mnemonic } = BIP86Signer.generate('testnet');
+
+// Connect to a DigiByte node
+const dd = new DigiDollar({
+  network: 'testnet',
+  rpc: { port: 14024, username: 'rpcuser', password: 'rpcpassword' },
+  signer,
+});
+
+// Mint DigiDollars — locks DGB as collateral
+const mint = await dd.mint({ ddAmountCents: 10_000n, lockTier: 1 });
+console.log(`Minted $100 DD | txid: ${mint.txid}`);
+console.log(`Collateral locked: ${mint.collateralSats} sats`);
+console.log(`Unlocks at block: ${mint.unlockHeight}`);
+
+// Transfer DigiDollars
+const transfer = await dd.transfer({
+  recipients: [
+    { toAddress: 'dgbt1p...', ddAmountCents: 5_000n },
+  ],
+});
+console.log(`Sent $50 DD | txid: ${transfer.txid}`);
+
+// Redeem — burn DD, unlock DGB collateral
+const redeem = await dd.redeem({ positionId: mint.txid });
+console.log(`Redeemed | DGB returned: ${redeem.dgbReturnedSats} sats`);
+
+// Read-only queries (no signer needed)
+const price = await dd.getOraclePrice();
+const stats = await dd.getStats();
+const positions = await dd.getPositions();
+const utxos = await dd.getUTXOs();
+const height = await dd.getBlockHeight();
+```
 
 ### RPC Client — talk to a DigiByte node
 
@@ -162,8 +209,22 @@ const collateralSats = calculateCollateral(10_000n, 6_310n, ratio);
 
 ## Features
 
+### core
+- **High-level facade** — `dd.mint()`, `dd.transfer()`, `dd.redeem()` handle everything
+- **Pluggable Backend** — default `RpcBackend` wraps `DigiDollarRPC`, swap in Electrum/Blockbook later
+- **Pluggable Signer** — default `BIP86Signer` (BIP-86 Taproot HD), swap in hardware wallets or KMS
+- **BIP-86 HD derivation** — `m/86'/20'/0'` (mainnet), `m/86'/1'/0'` (testnet), mnemonic support
+- **DigiByte bech32m** — encode/decode P2TR addresses with `dgb`/`dgbt`/`dgbrt` HRPs
+- **UTXO Manager** — queries, classifies, and partitions UTXOs (standard/ddTokens/ddCollateral)
+- **Position Tracker** — enriches positions with unlock timing, health status, redeemability
+- **Oracle Wrapper** — staleness checks, `requireFreshPrice()` guard, unit conversions
+- **BIP-341 sighash** — full Taproot sighash computation for key-path and script-path spends
+- **Witness construction** — key-path `[sig]` and script-path `[sig, leafScript, controlBlock]`
+- **Full pipelines** — each tx type: oracle check → UTXO query → build → sighash → sign → broadcast
+- **77 unit tests** — covering all modules
+
 ### rpc-client
-- **31 typed RPC methods** — oracle, balance, transaction, position, wallet, system
+- **35 typed RPC methods** — oracle, balance, transaction, position, wallet, system, blockchain
 - **Zero runtime dependencies** — native `fetch` (Node 20+)
 - **Dual ESM/CJS** — works with both module systems
 - **Typed error hierarchy** — `OraclePriceUnavailableError`, `InsufficientFundsError`, etc.
@@ -190,6 +251,85 @@ const collateralSats = calculateCollateral(10_000n, 6_310n, ratio);
 - **Optional Schnorr signing** — BIP-340 via `@noble/curves`
 - **2 runtime deps** — `@noble/curves` + `@noble/hashes` (audited pure-JS crypto)
 - **120 unit tests** — including cross-package round-trip verification
+
+## core API
+
+### DigiDollar Facade
+
+```typescript
+const dd = new DigiDollar(config: DigiDollarConfig);
+
+// Transactions (require Signer)
+dd.mint(req: MintRequest): Promise<MintResult>
+dd.transfer(req: TransferRequest): Promise<TransferResult>
+dd.redeem(req: RedeemRequest): Promise<RedeemResult>
+
+// Read-only
+dd.getOraclePrice(): Promise<OracleSnapshot>
+dd.getBalance(address?): Promise<DDBalance>
+dd.getPositions(activeOnly?): Promise<EnrichedPosition[]>
+dd.getPosition(positionId): Promise<EnrichedPosition | null>
+dd.getStats(): Promise<DDStats>
+dd.getReceiveAddress(): Promise<string>
+dd.getBlockHeight(): Promise<number>
+dd.getUTXOs(): Promise<ClassifiedUTXOSet>
+dd.estimateCollateral(ddAmountCents, lockTier): Promise<CollateralEstimate>
+```
+
+### BIP-86 Signer
+
+```typescript
+// From existing mnemonic
+const signer = BIP86Signer.fromMnemonic(mnemonic, network);
+
+// Generate new
+const { signer, mnemonic } = BIP86Signer.generate(network);
+
+// Derive addresses
+const { address, path } = signer.deriveNextAddress();  // sequential
+const xpub = signer.getAccountXpub();                  // watch-only export
+```
+
+### Address Encoding
+
+```typescript
+import { encodeBech32m, decodeBech32m } from '@digidollar/core';
+
+const addr = encodeBech32m(xOnlyPubKey, 'testnet');  // → dgbt1p...
+const { program, network } = decodeBech32m(addr);    // → 32-byte key + 'testnet'
+```
+
+### Pluggable Backend
+
+```typescript
+import { DigiDollar, RpcBackend } from '@digidollar/core';
+
+// Default: RPC backend (from config)
+const dd = new DigiDollar({ network: 'testnet', rpc: { port: 14024, ... } });
+
+// Custom: pass your own Backend implementation
+const dd = new DigiDollar({ network: 'testnet', backend: myElectrumBackend });
+```
+
+### Pluggable Signer
+
+```typescript
+import type { Signer, SigningContext } from '@digidollar/core';
+
+// Implement for hardware wallets, KMS, etc.
+class LedgerSigner implements Signer {
+  async getPublicKey(path?) { /* talk to Ledger */ }
+  async sign(ctx: SigningContext) { /* sign on device */ }
+  async getScriptPubKey(path?) { /* derive P2TR script */ }
+  async getAddress(path?) { /* derive bech32m address */ }
+}
+
+const dd = new DigiDollar({
+  network: 'mainnet',
+  rpc: { port: 14022, ... },
+  signer: new LedgerSigner(),
+});
+```
 
 ## tx-builder API
 
@@ -331,6 +471,14 @@ dgbToSats(dgb: number): bigint    // 1.5 DGB → 150000000n
 | `calculateCollateral(params)` | Calculate collateral by lock days |
 | `estimateCollateral(params)` | Estimate collateral by lock tier |
 
+### Blockchain (4 methods)
+| Method | Description |
+|--------|-------------|
+| `listUnspent(minconf?, maxconf?, addresses?)` | List unspent outputs |
+| `getRawTransaction(txid, verbose?)` | Get raw/decoded transaction |
+| `sendRawTransaction(hex)` | Broadcast signed transaction |
+| `getBlockCount()` | Current blockchain height |
+
 ### System (4 methods)
 | Method | Description |
 |--------|-------------|
@@ -400,6 +548,21 @@ try {
 }
 ```
 
+Core SDK errors:
+
+```typescript
+import {
+  CoreError,             // base class
+  NoSignerError,         // no signer configured for tx operations
+  StalePriceError,       // oracle price stale or unavailable
+  InsufficientFundsError,// not enough DGB UTXOs
+  InsufficientDDError,   // not enough DD token UTXOs
+  PositionError,         // position not found or not redeemable
+  AddressError,          // invalid bech32m address
+  BackendError,          // backend communication failure
+} from '@digidollar/core';
+```
+
 TX Builder errors:
 
 ```typescript
@@ -459,13 +622,14 @@ DUST_THRESHOLD // 1000n sats
 - DigiByte Core with DigiDollar enabled (RC22+) for rpc-client
 - tx-parser has no runtime requirements — pure data parsing
 - tx-builder requires `@noble/curves` + `@noble/hashes` (audited pure-JS crypto)
+- core adds `@scure/bip32` + `@scure/bip39` + `@scure/base` (audited pure-JS crypto)
 
 ## Roadmap
 
-1. **RPC Client** — typed RPC wrapper ✅
-2. **TX Parser** — detect DD transactions, classify UTXOs ✅
-3. **TX Builder** — construct DD transactions without Core RPC ✅
-4. **Full SDK** — oracle consensus, UTXO tracking, position lifecycle
+1. **RPC Client** — typed RPC wrapper (35 methods)
+2. **TX Parser** — detect DD transactions, classify UTXOs (125 tests)
+3. **TX Builder** — construct DD transactions without Core RPC (120 tests)
+4. **Core SDK** — full pipeline with signing, UTXO management, position tracking (77 tests)
 
 ## License
 
