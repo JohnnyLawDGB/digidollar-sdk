@@ -6,3 +6,4 @@ export * from './position.js';
 export * from './wallet.js';
 export * from './system.js';
 export * from './params.js';
+export * from './blockchain.js';

@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist/esm",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "composite": true,
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../rpc-client" },
+    { "path": "../tx-parser" },
+    { "path": "../tx-builder" }
+  ]
+}

@@ -5,6 +5,7 @@ import { createTransactionMethods, type TransactionMethods } from './methods/tra
 import { createPositionMethods, type PositionMethods } from './methods/position.js';
 import { createWalletMethods, type WalletMethods } from './methods/wallet.js';
 import { createSystemMethods, type SystemMethods } from './methods/system.js';
+import { createBlockchainMethods, type BlockchainMethods } from './methods/blockchain.js';
 
 /** Configuration for DigiDollarRPC client */
 export interface DigiDollarRPCConfig {
@@ -46,7 +47,8 @@ export class DigiDollarRPC implements
   TransactionMethods,
   PositionMethods,
   WalletMethods,
-  SystemMethods
+  SystemMethods,
+  BlockchainMethods
 {
   private readonly transport: Transport;
 
@@ -93,6 +95,12 @@ export class DigiDollarRPC implements
   declare getDeploymentInfo: SystemMethods['getDeploymentInfo'];
   declare getProtectionStatus: SystemMethods['getProtectionStatus'];
 
+  // Blockchain methods
+  declare listUnspent: BlockchainMethods['listUnspent'];
+  declare getRawTransaction: BlockchainMethods['getRawTransaction'];
+  declare sendRawTransaction: BlockchainMethods['sendRawTransaction'];
+  declare getBlockCount: BlockchainMethods['getBlockCount'];
+
   constructor(config: DigiDollarRPCConfig) {
     this.transport = new Transport({
       host: config.host ?? '127.0.0.1',
@@ -109,6 +117,7 @@ export class DigiDollarRPC implements
     Object.assign(this, createPositionMethods(this.transport));
     Object.assign(this, createWalletMethods(this.transport));
     Object.assign(this, createSystemMethods(this.transport));
+    Object.assign(this, createBlockchainMethods(this.transport));
   }
 
   /**
@@ -117,6 +126,16 @@ export class DigiDollarRPC implements
    */
   call<T = unknown>(method: string, params: unknown[] = [], useWallet = false): Promise<T> {
     return this.transport.call<T>(method, params, useWallet);
+  }
+
+  /**
+   * JSON-RPC batch call — multiple methods in a single HTTP request.
+   * Returns results in the same order as the input calls.
+   */
+  batch<T extends unknown[]>(
+    calls: Array<{ method: string; params?: unknown[]; useWallet?: boolean }>,
+  ): Promise<T> {
+    return this.transport.batch<T>(calls);
   }
 
   /** Re-read cookie auth file (useful for long-running processes) */
