@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "packages/rpc-client" },
-    { "path": "packages/tx-parser" }
+    { "path": "packages/tx-parser" },
+    { "path": "packages/tx-builder" }
   ]
 }
