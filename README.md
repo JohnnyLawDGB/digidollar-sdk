@@ -6,8 +6,9 @@ Typed TypeScript SDK for the [DigiDollar](https://github.com/DigiByte-Core/digib
 
 | Package | Description | Status |
 |---------|-------------|--------|
-| [`@digidollar/rpc-client`](packages/rpc-client) | Typed RPC wrapper for all 31 DigiDollar methods | Phase 1 ✅ |
-| [`@digidollar/tx-parser`](packages/tx-parser) | Pure transaction parser and UTXO classifier | Phase 2 ✅ |
+| [`@digidollar/rpc-client`](packages/rpc-client) | Typed RPC wrapper for all 31 DigiDollar methods | Phase 1 |
+| [`@digidollar/tx-parser`](packages/tx-parser) | Pure transaction parser and UTXO classifier | Phase 2 |
+| [`@digidollar/tx-builder`](packages/tx-builder) | Build unsigned DD transactions without a node | Phase 3 |
 
 ## Quick Start
 
@@ -91,6 +92,74 @@ if (opReturn?.txType === 'mint') {
 }
 ```
 
+### TX Builder — construct transactions without a node
+
+```bash
+npm install @digidollar/tx-builder
+```
+
+```typescript
+import {
+  MintBuilder,
+  TransferBuilder,
+  RedeemBuilder,
+  calculateCollateral,
+  getCollateralRatio,
+  lockTierToBlocks,
+} from '@digidollar/tx-builder';
+
+// Build a mint transaction
+const mintResult = MintBuilder.build({
+  ddAmountCents: 10_000n,           // $100 DD
+  lockTier: 1,                       // 30 days, 500% collateral
+  ownerPubKey: myXOnlyPubKey,        // 32-byte x-only key
+  oraclePriceMicroUsd: 6_310n,      // $0.00631 per DGB
+  currentHeight: 60_000,
+  utxos: myAvailableUtxos,           // DGB UTXOs for collateral + fees
+  feeRate: 100n,                     // 100 sat/vB
+  changeDest: myChangeScriptPubKey,  // hex scriptPubKey for DGB change
+});
+
+console.log(`Unsigned tx: ${mintResult.tx.length} bytes`);
+console.log(`Txid: ${mintResult.txid}`);
+console.log(`Fee: ${mintResult.fee} sats`);
+// Sign externally, then broadcast
+
+// Build a transfer transaction
+const transferResult = TransferBuilder.build({
+  recipients: [
+    { recipientPubKey: aliceKey, ddAmountCents: 3000n },
+    { recipientPubKey: bobKey, ddAmountCents: 2000n },
+  ],
+  ddUtxos: myDDTokenUtxos,           // DD token UTXOs to spend
+  feeUtxos: myFeeUtxos,              // DGB UTXOs for fees
+  spenderPubKey: myXOnlyPubKey,
+  feeRate: 100n,
+  changeDest: myChangeScriptPubKey,
+});
+
+// Build a redeem transaction (unlock collateral)
+const redeemResult = RedeemBuilder.build({
+  collateralUtxo: myCollateralUtxo,
+  ddToRedeemCents: 10_000n,
+  ddUtxos: myDDTokenUtxos,
+  feeUtxos: myFeeUtxos,
+  ownerPubKey: myXOnlyPubKey,
+  currentHeight: 300_000,
+  unlockHeight: 232_800,              // must be <= currentHeight
+  collateralAmount: 7_924_009_508_716n,
+  feeRate: 100n,
+  collateralDest: myCollateralScriptPubKey,
+  changeDest: myChangeScriptPubKey,
+});
+
+// Calculate collateral requirements
+const ratio = getCollateralRatio(1);  // 500 (500% for tier 1)
+const blocks = lockTierToBlocks(1);   // 172,800 (30 days)
+const collateralSats = calculateCollateral(10_000n, 6_310n, ratio);
+// 7,924,009,508,716 sats (~79,240 DGB)
+```
+
 ## Features
 
 ### rpc-client
@@ -110,6 +179,68 @@ if (opReturn?.txType === 'mint') {
 - **Type-aware OP_RETURN parsing** — correctly handles mint, transfer, and redeem formats
 - **Dual ESM/CJS** — same build pattern as rpc-client
 - **125 unit tests** — covering all modules including round-trip CScriptNum verification
+
+### tx-builder
+- **Build unsigned transactions** — mint, transfer, and redeem without a DigiByte node
+- **Taproot MAST construction** — NUMS internal key, Normal + ERR leaf scripts, BIP-341 key tweaking
+- **OP_RETURN encoding** — round-trip compatible with tx-parser's `parseOpReturn()`
+- **Collateral calculation** — bigint math matching C++ `__int128` formula exactly
+- **Greedy coin selection** — largest-first with `MAX_TX_INPUTS` safety limit
+- **Fee estimation** — vsize-based with 35% safety margin
+- **Optional Schnorr signing** — BIP-340 via `@noble/curves`
+- **2 runtime deps** — `@noble/curves` + `@noble/hashes` (audited pure-JS crypto)
+- **120 unit tests** — including cross-package round-trip verification
+
+## tx-builder API
+
+### Builders
+
+```typescript
+MintBuilder.build(params: MintParams): BuilderResult
+TransferBuilder.build(params: TransferParams): BuilderResult
+RedeemBuilder.build(params: RedeemParams): BuilderResult
+```
+
+### Taproot
+
+```typescript
+buildCollateralMAST(ownerPubKey, lockHeight): CollateralSpendData
+buildTokenP2TR(ownerPubKey): Uint8Array           // P2TR scriptPubKey
+buildNormalLeaf(ownerPubKey, lockHeight): Uint8Array
+buildERRLeaf(ownerPubKey, lockHeight): Uint8Array
+tweakPublicKey(xOnlyKey, merkleRoot?): { outputKey, parity }
+```
+
+### OP_RETURN Encoding
+
+```typescript
+encodeMintOpReturn(amount, lockHeight, lockTier, ownerPubKey): Uint8Array
+encodeTransferOpReturn(amounts[]): Uint8Array
+encodeRedeemOpReturn(amount): Uint8Array
+```
+
+### Collateral
+
+```typescript
+calculateCollateral(ddCents, oracleMicroUsd, ratioPercent): bigint
+getCollateralRatio(lockTier): number     // e.g. 500 for 500%
+lockTierToBlocks(tier): number           // e.g. 172,800 for tier 1
+```
+
+### Transaction Serialization
+
+```typescript
+serializeTransaction(tx): Uint8Array     // full SegWit format
+serializeForTxid(tx): Uint8Array         // without witness (for txid)
+computeTxid(tx): string                  // double-SHA256, reversed hex
+```
+
+### Signing (optional)
+
+```typescript
+signSchnorr(txHash, privateKey): Uint8Array   // 64-byte BIP-340 signature
+verifySchnorr(signature, txHash, pubKey): boolean
+```
 
 ## tx-parser API
 
@@ -269,6 +400,19 @@ try {
 }
 ```
 
+TX Builder errors:
+
+```typescript
+import {
+  TxBuilderError,              // base class
+  InvalidParamsError,          // bad parameters
+  InsufficientCollateralError, // not enough DGB for collateral
+  InsufficientFeeError,        // not enough DGB for fees
+  InsufficientDDError,         // not enough DD tokens
+  CoinSelectionError,          // coin selection failed
+} from '@digidollar/tx-builder';
+```
+
 ## Lock Tiers
 
 | Tier | Lock Period | Collateral Ratio |
@@ -297,17 +441,30 @@ PROTOCOL.PRICE_VALID_BLOCKS // 20 blocks (5 minutes)
 LOCK_TIERS[4] // { days: 365, blocks: 2_102_400, ratio: 300 }
 ```
 
+```typescript
+import {
+  LOCK_TIERS, NUMS_POINT, COIN, MAX_MONEY,
+  DD_VERSION_MINT, DD_VERSION_TRANSFER, DD_VERSION_REDEEM,
+  DUST_THRESHOLD, MIN_DD_FEE, MIN_REDEEM_FEE,
+} from '@digidollar/tx-builder';
+
+LOCK_TIERS[1]  // { blocks: 172_800, ratio: 500 }
+COIN           // 100_000_000n (sats per DGB)
+DUST_THRESHOLD // 1000n sats
+```
+
 ## Requirements
 
 - Node.js 20+ (native `fetch` for rpc-client)
 - DigiByte Core with DigiDollar enabled (RC22+) for rpc-client
 - tx-parser has no runtime requirements — pure data parsing
+- tx-builder requires `@noble/curves` + `@noble/hashes` (audited pure-JS crypto)
 
 ## Roadmap
 
 1. **RPC Client** — typed RPC wrapper ✅
 2. **TX Parser** — detect DD transactions, classify UTXOs ✅
-3. **TX Builder** — construct DD transactions without Core RPC
+3. **TX Builder** — construct DD transactions without Core RPC ✅
 4. **Full SDK** — oracle consensus, UTXO tracking, position lifecycle
 
 ## License
