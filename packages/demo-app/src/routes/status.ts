@@ -1,18 +1,17 @@
 import { Router } from 'express';
-import { dd } from '../sdk.js';
-import { sendJson } from '../middleware/bigint-serializer.js';
+import { rpc } from '../rpc.js';
 
 const router = Router();
 
 router.get('/status', async (_req, res, next) => {
   try {
-    const [oracle, height, stats, balance] = await Promise.all([
-      dd.getOraclePrice(),
-      dd.getBlockHeight(),
-      dd.getStats(),
-      dd.getBalance(),
+    const [oracle, info, stats, balance] = await Promise.all([
+      rpc('getoracleprice'),
+      rpc('getblockchaininfo'),
+      rpc('getdigidollarstats'),
+      rpc('getdigidollarbalance'),
     ]);
-    sendJson(res, { oracle, height, stats, balance });
+    res.json({ oracle, height: info.blocks, stats, balance });
   } catch (err) {
     next(err);
   }

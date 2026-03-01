@@ -1,13 +1,12 @@
 import { Router } from 'express';
-import { dd } from '../sdk.js';
-import { sendJson } from '../middleware/bigint-serializer.js';
+import { rpc } from '../rpc.js';
 
 const router = Router();
 
 router.get('/positions', async (_req, res, next) => {
   try {
-    const positions = await dd.getPositions(true);
-    sendJson(res, { positions });
+    const positions = await rpc('listdigidollarpositions');
+    res.json({ positions: positions || [] });
   } catch (err) {
     next(err);
   }

@@ -1,5 +1,3 @@
-import { bigintReviver } from '../lib/bigint-json';
-
 const BASE = '/test/api';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -10,8 +8,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
-  const text = await res.text();
-  const data = text ? JSON.parse(text, bigintReviver) : null;
+  const data = await res.json();
   if (!res.ok) {
     throw new ApiError(
       data?.error || res.statusText,

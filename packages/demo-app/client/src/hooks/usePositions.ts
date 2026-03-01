@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api/client';
-import type { PositionsResponse, EnrichedPosition } from '../api/types';
+import type { PositionsResponse, Position } from '../api/types';
 
 export function usePositions(intervalMs = 30_000) {
-  const [positions, setPositions] = useState<EnrichedPosition[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 

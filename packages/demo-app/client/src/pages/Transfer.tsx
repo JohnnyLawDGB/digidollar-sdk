@@ -34,7 +34,7 @@ export function Transfer() {
 
       {balanceData && (
         <div className="text-sm text-gray-400">
-          Available: <span className="text-white font-medium">${formatDD(balanceData.ddBalance)}</span> DD
+          Available: <span className="text-white font-medium">${formatDD(balanceData.dd.total)}</span> DD
         </div>
       )}
 

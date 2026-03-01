@@ -4,7 +4,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { CopyButton } from '../components/CopyButton';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useStatus } from '../hooks/useStatus';
-import { formatOraclePrice, formatDGB, formatDD, formatBlocks } from '../lib/format';
+import { formatDD, formatBlocks } from '../lib/format';
 import { api } from '../api/client';
 import type { AddressResponse } from '../api/types';
 
@@ -36,6 +36,7 @@ export function Dashboard() {
   if (!data) return null;
 
   const { oracle, height, stats, balance } = data;
+  const priceUsd = oracle.price_micro_usd ? (oracle.price_micro_usd / 1_000_000).toFixed(6) : oracle.price_usd;
 
   return (
     <div className="space-y-6">
@@ -48,8 +49,8 @@ export function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card
           label="Oracle Price"
-          value={formatOraclePrice(oracle.priceMicroUsd)}
-          sub={oracle.isStale ? 'STALE' : `${oracle.oracleCount} oracles reporting`}
+          value={`$${priceUsd}`}
+          sub={oracle.is_stale ? 'STALE' : oracle.oracle_count ? `${oracle.oracle_count} oracles` : undefined}
         />
         <Card
           label="Block Height"
@@ -57,13 +58,13 @@ export function Dashboard() {
         />
         <Card
           label="DGB Balance"
-          value={`${formatDGB(balance.confirmed)} DGB`}
-          sub={balance.unconfirmed !== '0' ? `+${balance.unconfirmed} unconfirmed` : undefined}
+          value="—"
+          sub="See Balance page"
         />
         <Card
           label="DD Balance"
           value={`$${formatDD(balance.total)}`}
-          sub="DigiDollars"
+          sub={balance.pending ? `+$${formatDD(balance.pending)} pending` : 'DigiDollars'}
         />
       </div>
 
@@ -107,7 +108,7 @@ export function Dashboard() {
             </div>
             <div>
               <p className="text-gray-500">Total Collateral</p>
-              <p className="text-white">{stats.total_collateral_dgb.toLocaleString()} DGB</p>
+              <p className="text-white">{stats.total_collateral_dgb?.toLocaleString()} DGB</p>
             </div>
           </div>
         </div>

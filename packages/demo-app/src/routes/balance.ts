@@ -1,20 +1,15 @@
 import { Router } from 'express';
-import { dd } from '../sdk.js';
-import { sendJson } from '../middleware/bigint-serializer.js';
+import { rpc } from '../rpc.js';
 
 const router = Router();
 
 router.get('/balance', async (_req, res, next) => {
   try {
-    const [balance, utxos] = await Promise.all([
-      dd.getBalance(),
-      dd.getUTXOs(),
+    const [dd, dgb] = await Promise.all([
+      rpc('getdigidollarbalance'),
+      rpc('getbalance'),
     ]);
-    sendJson(res, {
-      dd: balance,
-      dgbBalance: utxos.standardBalance,
-      ddBalance: utxos.ddBalance,
-    });
+    res.json({ dd, dgb });
   } catch (err) {
     next(err);
   }

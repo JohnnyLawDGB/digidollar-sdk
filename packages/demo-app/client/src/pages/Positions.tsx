@@ -8,6 +8,12 @@ import { formatDD, formatBlocks, truncateAddress } from '../lib/format';
 import { TIER_DISPLAY } from '../lib/constants';
 import type { RedeemResult } from '../api/types';
 
+function healthStatus(ratio: number): string {
+  if (ratio >= 200) return 'healthy';
+  if (ratio >= 150) return 'warning';
+  return 'critical';
+}
+
 export function Positions() {
   const { positions, loading, error, refetch } = usePositions();
   const { mutate, loading: redeeming, result: redeemResult } = useMutation<
@@ -80,17 +86,17 @@ export function Positions() {
                     <td className="py-3 pr-4 text-gray-300">{parseFloat(p.dgb_collateral).toLocaleString()} DGB</td>
                     <td className="py-3 pr-4 text-gray-300">{tierInfo?.label ?? `Tier ${p.lock_tier}`}</td>
                     <td className="py-3 pr-4">
-                      <StatusBadge status={p.healthStatus} />
+                      <StatusBadge status={healthStatus(p.health_ratio)} />
                     </td>
                     <td className="py-3 pr-4 text-gray-400">
-                      {p.blocksUntilUnlock > 0
-                        ? `${formatBlocks(p.blocksUntilUnlock)} blocks`
+                      {p.blocks_remaining > 0
+                        ? `${formatBlocks(p.blocks_remaining)} blocks`
                         : 'Unlocked'}
                     </td>
                     <td className="py-3">
                       <button
                         onClick={() => handleRedeem(p.position_id)}
-                        disabled={!p.canRedeemNow || redeeming}
+                        disabled={!p.can_redeem || redeeming}
                         className="px-3 py-1 text-xs font-medium rounded bg-dgb-blue text-dgb-accent hover:bg-dgb-light disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                       >
                         Redeem

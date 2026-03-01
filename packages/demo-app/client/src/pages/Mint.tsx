@@ -4,7 +4,7 @@ import { TxResult } from '../components/TxResult';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useEstimate } from '../hooks/useEstimate';
 import { useMutation } from '../hooks/useMutation';
-import { formatDGB, formatDD } from '../lib/format';
+import { formatDD } from '../lib/format';
 import { TIER_DISPLAY } from '../lib/constants';
 import type { MintResult } from '../api/types';
 
@@ -45,13 +45,14 @@ export function Mint() {
             <input
               type="number"
               step="0.01"
-              min="0.01"
+              min="100"
               value={dollars}
               onChange={(e) => { setDollars(e.target.value); reset(); }}
               placeholder="100.00"
               className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-7 pr-4 py-2.5 text-white placeholder:text-gray-600 focus:border-dgb-accent focus:outline-none"
             />
           </div>
+          <p className="text-xs text-gray-500 mt-1">Minimum $100, maximum $100,000</p>
         </div>
 
         {/* Tier selector */}
@@ -106,19 +107,19 @@ export function Mint() {
           <div className="grid grid-cols-2 gap-3 text-sm bg-gray-900 border border-gray-800 rounded-lg p-4">
             <div>
               <p className="text-gray-500">DD Minted</p>
-              <p className="text-white">${formatDD(result.ddMintedCents)}</p>
+              <p className="text-white">${formatDD(result.dd_minted)}</p>
             </div>
             <div>
               <p className="text-gray-500">Collateral Locked</p>
-              <p className="text-white">{formatDGB(result.collateralSats)} DGB</p>
+              <p className="text-white">{parseFloat(result.dgb_collateral).toLocaleString()} DGB</p>
             </div>
             <div>
               <p className="text-gray-500">Fee</p>
-              <p className="text-white">{formatDGB(result.feeSats)} DGB</p>
+              <p className="text-white">{result.fee_paid} DGB</p>
             </div>
             <div>
               <p className="text-gray-500">Unlock Height</p>
-              <p className="text-white">{result.unlockHeight.toLocaleString()}</p>
+              <p className="text-white">{result.unlock_height?.toLocaleString()}</p>
             </div>
           </div>
         </div>

@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { dd } from '../sdk.js';
+import { rpc } from '../rpc.js';
 
 const router = Router();
 
 router.get('/address', async (_req, res, next) => {
   try {
-    const address = await dd.getReceiveAddress();
+    const address = await rpc('getdigidollaraddress');
     res.json({ address });
   } catch (err) {
     next(err);
